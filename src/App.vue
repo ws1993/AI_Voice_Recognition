@@ -55,23 +55,22 @@ let animationFrameId;
 async function recognizeSpeech(blob) {
   try {
     const formData = new FormData();
-    formData.append("audio", blob, "recording.wav");
+    formData.append("audio", blob, "recording.mp3");
     formData.append("model", "whisper-1");
     formData.append("language", "zh");
 
-    const response = await fetch(`${API_CONFIG.baseURL}/v1/audio/transcriptions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_CONFIG.apiKey}`,
-      },
-      body: formData,
-    });
+    const response = await axios.post(
+      `${API_CONFIG.baseURL}/v1/audio/transcriptions`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${API_CONFIG.apiKey}`,
+          // axios会自动设置Content-Type为multipart/form-data
+        },
+      }
+    );
 
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
-    }
-
-    const result = await response.json();
+    const result = response.data;
     return result.text || result.transcription || "";
   } catch (error) {
     console.error("语音识别API调用失败:", error);
@@ -94,13 +93,9 @@ async function formatWithOpenAI(transcription) {
   //   keywords: ["K1+202", "电线杆", "消防栓"],
   // };
   try {
-    const response = await fetch(`${API_CONFIG.baseURL}/v1/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_CONFIG.apiKey}`,
-      },
-      body: JSON.stringify({
+        const response = await axios.post(
+      `${API_CONFIG.baseURL}/v1/completions`,
+      {
         model: "gpt-4o-mini",
         prompt: `请分析以下测绘现场语音记录，提取结构化信息：
 语音内容：${transcription}
@@ -113,14 +108,16 @@ async function formatWithOpenAI(transcription) {
   - notes: 其他备注
 - confidence: 转录质量置信度(0-1)
 - keywords: 关键词列表`,
-      }),
-    });
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${API_CONFIG.apiKey}`,
+        },
+      }
+    );
 
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
-    }
-
-    const result = await response.json();
+    const result = response.data;
     return result.choices[0].text;
   } catch (error) {
     console.error("OpenAI API调用失败:", error);
