@@ -246,23 +246,23 @@ const startRecording = async () => {
 
         // 调用OpenAI API进行格式化
         const formatted = await formatWithOpenAI(recognizedText);
-        formattedResult.value = formatted || "格式化内容解析失败";
+        // formattedResult.value = formatted || "格式化内容解析失败";
         // 提取content中的JSON字符串
-        // let jsonStr = formatted;
-        // // 去除markdown代码块标记
-        // if (jsonStr.startsWith("```json")) {
-        //   jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/```$/, "");
-        // }
-        // let parsed;
-        // try {
-        //   parsed = JSON.parse(jsonStr);
-        //   // transcription.value = parsed.original_text || recognizedText;
-        //   formattedResult.value = parsed.structured_data || "";
-        //   // 如需关键词，可添加：keywords.value = parsed.keywords || [];
-        // } catch (e) {
-        //   formattedResult.value = "格式化内容解析失败";
-        //   confidenceReport.value = "";
-        // }
+        let jsonStr = formatted;
+        // 去除markdown代码块标记
+        if (jsonStr.startsWith("```json")) {
+          jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/```$/, "");
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(jsonStr);
+          // transcription.value = parsed.original_text || recognizedText;
+          formattedResult.value = parsed || "";
+          // 如需关键词，可添加：keywords.value = parsed.keywords || [];
+        } catch (e) {
+          formattedResult.value = "格式化内容解析失败";
+          confidenceReport.value = "";
+        }
       } catch (error) {
         console.error("处理录音时出错:", error);
       }
