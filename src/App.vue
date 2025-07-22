@@ -35,7 +35,7 @@ import { ref } from "vue";
 // API配置 - 请替换为您的实际API密钥
 const API_CONFIG = {
   baseURL: "https://api.chatanywhere.tech",
-  apiKey: import.meta.env.VITE_API_KEY, // 使用环境变量
+  apiKey: process.env.VITE_API_KEY, // 使用环境变量
 };
 
 const isRecording = ref(false);
