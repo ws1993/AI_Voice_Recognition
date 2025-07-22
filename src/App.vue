@@ -31,6 +31,7 @@
 
 <script setup>
 import { ref } from "vue";
+import axios from "axios";
 
 // API配置 - 请替换为您的实际API密钥
 const API_CONFIG = {
