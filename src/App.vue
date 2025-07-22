@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <h1>AI 语音识别工具</h1>
+    <h1>AI语音识别工具</h1>
     <div class="main-controls">
       <button @click="toggleRecording" :class="{ 'is-recording': isRecording }">
         {{ isRecording ? "停止录音" : "开始录音" }}
