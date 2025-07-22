@@ -96,7 +96,7 @@ async function formatWithOpenAI(transcription) {
       `${API_CONFIG.baseURL}/v1/chat/completions`,
       {
         model: "gpt-4o-mini",
-        message: [
+        messages: [
           {
             role: "system",
             content: `
