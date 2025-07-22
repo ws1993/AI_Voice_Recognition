@@ -18,10 +18,6 @@
         <p>{{ transcription || "暂无内容" }}</p>
       </div>
       <div class="result-card">
-        <h2>置信报告</h2>
-        <p>{{ confidenceReport || "暂无内容" }}</p>
-      </div>
-      <div class="result-card">
         <h2>格式化内容</h2>
         <pre>{{ formattedResult || "暂无内容" }}</pre>
       </div>
@@ -56,7 +52,8 @@ let animationFrameId;
 async function recognizeSpeech(blob) {
   try {
     const formData = new FormData();
-    formData.append("audio", blob, "recording.mp3");
+    formData.append("file", blob, "recording.mp3");
+    formData.append("prompt", "以下是普通话的句子");
     formData.append("model", "whisper-1");
     formData.append("language", "zh");
 
@@ -66,13 +63,14 @@ async function recognizeSpeech(blob) {
       {
         headers: {
           Authorization: `Bearer ${API_CONFIG.apiKey}`,
+          "Content-Type": "multipart/form-data", // 确保设置正确的Content-Type
           // axios会自动设置Content-Type为multipart/form-data
         },
       }
     );
 
     const result = response.data;
-    return result.text || result.transcription || "";
+    return result.text || "";
   } catch (error) {
     console.error("语音识别API调用失败:", error);
     return `语音识别失败: ${error.message}`;
@@ -94,21 +92,113 @@ async function formatWithOpenAI(transcription) {
   //   keywords: ["K1+202", "电线杆", "消防栓"],
   // };
   try {
-        const response = await axios.post(
-      `${API_CONFIG.baseURL}/v1/completions`,
+    const response = await axios.post(
+      `${API_CONFIG.baseURL}/v1/chat/completions`,
       {
         model: "gpt-4o-mini",
-        prompt: `请分析以下测绘现场语音记录，提取结构化信息：
-语音内容：${transcription}
-请以JSON格式返回结果，包含以下字段：
-- original_text: 原始转录文本
-- structured_data: 结构化数据，包含：
-  - location_description: 位置描述
-  - features: 地物特征列表
-  - measurements: 测量数据
-  - notes: 其他备注
-- confidence: 转录质量置信度(0-1)
-- keywords: 关键词列表`,
+        message: [
+          {
+            role: "system",
+            content: `
+你是一个专业的管网测绘数据提取AI助手。请严格按照以下规则和结构化要求，从用户输入的自然语言描述中提取结构化数据，并输出JSON格式结果。
+
+# 任务说明
+
+作为管网测绘数据专家，请从自然语言描述中提取结构化数据。输出需包含完整字段、数据值、转录质量置信度（0-100%），并遵循以下规则：
+
+---
+
+## 一、结构化字段要求（*为必填字段）
+
+### 1. 元件类型*
+- 值域：污水井盖、雨水井盖、阀门、消防栓、检测点、排气阀、计量表、检修孔等
+- 映射规则：
+  - 自动标准化术语（如"污水井"→"污水井盖"）
+  - 未明确时按上下文推断
+
+### 2. 规格参数*
+- 子字段：
+  - 直径：单位自动换算为毫米（如"50厘米"→"500mm"）
+  - 形状：圆形/方形/矩形（未提及时：井盖默认圆形，阀门室默认矩形）
+  - 深度：井深/阀井深度（单位统一为毫米）
+  - 公称直径：处理专业缩写（如"DN300"→300mm）
+
+### 3. 材质*
+- 值域：铸铁、球墨铸铁、复合材料、混凝土、钢、PE、PVC
+- 术语转换：
+  - "铁"→"铸铁"
+  - "塑料"→"复合材料"
+  - "水泥"→"混凝土"
+
+### 4. 状态*
+- 值域：完好/破损/沉降/缺失/异响/渗漏/腐蚀/堵塞
+- 处理规则：
+  - 支持多状态标记（如"破损+沉降"）
+  - 未提及状态时默认为"完好"
+
+### 5. 权属单位
+- 处理规则：
+  - 自动补全规范名称（如"太仓水务集团"→"太仓市水务集团有限公司"）
+  - 识别常见单位模式：[地名][水务/市政/燃气]集团[公司]
+
+### 6. 维修标记
+- 值域：急需维修/计划维修/定期更换/监控使用
+- 推断逻辑：
+  - "需要维修"→"计划维修"
+  - "立即更换"→"急需维修"
+  - "建议检修"→"监控使用"
+
+### 7. 空间定位
+- 提取内容：
+  - GPS坐标（如"N31.45° E121.06°"）
+  - 相对位置（如"距XX路标15米"）
+  - 管线桩号（如"K3+250"）
+
+### 8. 备注
+- 保留原始描述中的关键补充信息：
+  - 邻近危险源（"邻近高压电缆"）
+  - 特殊标识（"编号SZ-2024"）
+  - 环境特征（"位于绿化带内"）
+
+---
+
+## 二、置信度评估规则
+
+对每个字段独立评估置信度：
+
+| 等级 | 分值    | 判定标准                                       |
+| ---- | ------- | ---------------------------------------------- |
+| A    | 90-100% | 值在原文中明确提及（如"直径50厘米"）           |
+| B    | 70-89%  | 通过专业逻辑推断（如未提形状时井盖默认"圆形"） |
+| C    | <70%    | 存在歧义或信息缺失（如"大型井盖"无法换算直径） |
+
+特殊规则：
+
+- 安全相关属性（泄漏/结构损坏）置信度阈值≥95%，否则触发人工复核
+- 矛盾描述（前文"完好"后文"裂缝"）取最新信息，置信度降级
+
+---
+
+## 三、处理流程
+
+1. 术语标准化：口语词转专业术语（如"生锈铁盖"→材质="铸铁"，状态="腐蚀"）
+2. 单位统一：
+   - 长度单位→毫米
+   - 体积单位→立方米
+3. 空值处理：
+   if 字段未提及: 
+        value = null
+        missing_reason = "未提及[字段名]"
+
+请严格按照上述要求输出结构化JSON，字段齐全，便于后续自动化处理。
+`,
+          },
+          {
+            role: "user",
+            content: `请分析以下测绘现场语音记录，按要求提取信息：
+语音内容：${transcription}`,
+          },
+        ],
       },
       {
         headers: {
@@ -119,7 +209,7 @@ async function formatWithOpenAI(transcription) {
     );
 
     const result = response.data;
-    return result.choices[0].text;
+    return result.choices?.[0]?.message?.content;
   } catch (error) {
     console.error("OpenAI API调用失败:", error);
     return `格式化失败: ${error.message}`;
@@ -155,13 +245,24 @@ const startRecording = async () => {
         transcription.value = recognizedText;
 
         // 调用OpenAI API进行格式化
-        const formatted = formatWithOpenAI(recognizedText);
-        formattedResult.value = JSON.stringify(formatted, null, 2);
-
-        // 简单模拟置信度计算
-        const textLength = recognizedText.length;
-        const confidence = textLength > 10 ? 0.95 : 0.8;
-        confidenceReport.value = confidence;
+        const formatted = await formatWithOpenAI(recognizedText);
+        formattedResult.value = formatted || "格式化内容解析失败";
+        // 提取content中的JSON字符串
+        // let jsonStr = formatted;
+        // // 去除markdown代码块标记
+        // if (jsonStr.startsWith("```json")) {
+        //   jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/```$/, "");
+        // }
+        // let parsed;
+        // try {
+        //   parsed = JSON.parse(jsonStr);
+        //   // transcription.value = parsed.original_text || recognizedText;
+        //   formattedResult.value = parsed.structured_data || "";
+        //   // 如需关键词，可添加：keywords.value = parsed.keywords || [];
+        // } catch (e) {
+        //   formattedResult.value = "格式化内容解析失败";
+        //   confidenceReport.value = "";
+        // }
       } catch (error) {
         console.error("处理录音时出错:", error);
       }
